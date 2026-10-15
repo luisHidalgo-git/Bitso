@@ -73,7 +73,7 @@ cd tu-repositorio
 Instala las dependencias:
 
 ```bash
-pip install requests python-dotenv
+pip install -r requirements.txt
 ```
 
 ## 🔐 Configuración
