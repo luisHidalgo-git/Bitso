@@ -19,25 +19,23 @@ if not API_KEY or not API_SECRET:
 BASE_URL = "https://api.bitso.com"
 
 # --- PARÁMETROS DE LA ESTRATEGIA ---
-MONTO_OPERACION_MXN = 200.0          # Cantidad en MXN a gastar por operación
-SALDO_MINIMO_REQUERIDO = 50.0        # Mínimo en MXN para abrir compras
-UMBRAL_MINIMO_GANANCIA = 1.0         # % mínimo de crecimiento 24h para comprar desde MXN (ej. +1.0%)
+SALDO_MINIMO_REQUERIDO = 50.0        # Mínimo en MXN para abrir compras (evita operar centavos)
+UMBRAL_MINIMO_GANANCIA = 1.0         # % mínimo de crecimiento 24h para comprar desde MXN
 UMBRAL_DIFERENCIA_ROTACION = 2.5     # % EXTRA que debe superar la nueva moneda para justificar comisiones
 
-# --- NUEVOS PARÁMETROS: TRAILING STOP (Protección de Ganancias) ---
-PORCENTAJE_TRAILING_STOP = 1.5       # Si el precio cae 1.5% desde su punto más alto ganado, vende para asegurar.
+# --- TRAILING STOP (Protección de Ganancias) ---
+PORCENTAJE_TRAILING_STOP = 1.5       # Caída del 1.5% desde el pico máximo dispara la venta
 
-# Diccionario para rastrear el precio máximo alcanzado por la cripto que poseemos
+# Estado dinámico de la posición activa
 ESTADO_POSICION = {
     "cripto_actual": None,
     "precio_maximo_alcanzado": 0.0
 }
 
-# Lista de pares permitidos contra MXN
 MONEDAS_PERMITIDAS = ['btc_mxn', 'eth_mxn', 'xrp_mxn', 'sol_mxn']
 
 def crear_firma_bitso(http_method, request_path, payload=""):
-    """Genera la firma HMAC-SHA256 para autenticar peticiones en Bitso."""
+    """Genera la firma HMAC-SHA256 requerida por Bitso."""
     nonce = str(int(time.time() * 1000))
     message = nonce + http_method + request_path + payload
     signature = hmac.new(
@@ -89,7 +87,6 @@ def escanear_mercados():
                         "volumen": float(t['volume'])
                     })
             
-            # Ordenar de mayor a menor rendimiento en 24h
             mercados_validos.sort(key=lambda x: x['variacion'], reverse=True)
             return mercados_validos
     except Exception as e:
@@ -98,7 +95,7 @@ def escanear_mercados():
     return []
 
 def ejecutar_orden(book, side, tipo_monto, valor):
-    """Envía órdenes de mercado (buy/sell) a Bitso."""
+    """Envía órdenes de mercado a Bitso."""
     path = "/v3/orders/"
     payload_data = {
         "book": book,
@@ -137,16 +134,15 @@ def ciclo_principal():
     global ESTADO_POSICION
     
     print("\n" + "="*50)
-    print("--- EVALUANDO MERCADO (CON TRAILING STOP) ---")
+    print("--- EVALUANDO MERCADO (USANDO 100% DEL SALDO MXN) ---")
     
     balances = obtener_balances()
     mxn_disponible = balances.get('mxn', 0.0)
-    print(f"💰 Saldo MXN disponible: ${mxn_disponible:,.2f}")
+    print(f"💰 Saldo MXN total disponible: ${mxn_disponible:,.2f}")
 
     # 1. Identificar si ya tenemos cripto en portafolio
     cripto_poseida, saldo_poseido = detectar_cripto_poseida(balances)
     
-    # Si el balance indica que no tenemos cripto, reseteamos el rastreador de máximos
     if not cripto_poseida:
         ESTADO_POSICION["cripto_actual"] = None
         ESTADO_POSICION["precio_maximo_alcanzado"] = 0.0
@@ -177,36 +173,32 @@ def ciclo_principal():
         precio_actual = info_poseida['precio']
         variacion_poseida = info_poseida['variacion']
 
-        # Inicializar o actualizar el precio máximo del Trailing Stop
+        # Rastreador de pico máximo para Trailing Stop
         if ESTADO_POSICION["cripto_actual"] != cripto_poseida:
-            # Si acabamos de detectar una nueva cripto en el balance, fijamos su precio actual como base
             ESTADO_POSICION["cripto_actual"] = cripto_poseida
             ESTADO_POSICION["precio_maximo_alcanzado"] = precio_actual
             print(f"📈 [Trailing Stop] Nueva posición registrada. Precio base inicial: ${precio_actual:,.2f}")
         else:
-            # Si el precio actual supera al máximo histórico registrado, lo actualizamos hacia arriba
             if precio_actual > ESTADO_POSICION["precio_maximo_alcanzado"]:
                 ESTADO_POSICION["precio_maximo_alcanzado"] = precio_actual
-                print(f"🚀 [Trailing Stop] ¡Nuevo pico máximo alcanzado para {cripto_poseida.upper()}! -> ${precio_actual:,.2f}")
+                print(f"🚀 [Trailing Stop] ¡Nuevo pico máximo para {cripto_poseida.upper()}! -> ${precio_actual:,.2f}")
 
-        # Calcular el precio límite de venta (Caída permitida desde el pico máximo)
         precio_limite_venta = ESTADO_POSICION["precio_maximo_alcanzado"] * (1 - (PORCENTAJE_TRAILING_STOP / 100))
-        print(f"🛡️ [Trailing Stop] Pico: ${ESTADO_POSICION['precio_maximo_alcanzado']:,.2f} | Límite de venta dinámico: ${precio_limite_venta:,.2f}")
+        print(f"🛡️ [Trailing Stop] Pico: ${ESTADO_POSICION['precio_maximo_alcanzado']:,.2f} | Límite dinámico: ${precio_limite_venta:,.2f}")
 
-        # REGLA 1: Trailing Stop (Vender si el precio cae desde su pico) o si pasa a negativo
+        # REGLA 1: Trailing Stop o Caída Negativa
         if precio_actual <= precio_limite_venta or variacion_poseida < 0:
-            print(f"⚠️ El precio cayó desde su pico máximo o el mercado empeoró. Asegurando ganancias/protegiendo en MXN...")
+            print(f"⚠️ El precio retrocedió desde su pico máximo o pasó a terreno negativo. Resguardando 100% a MXN...")
             
             # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
             # ejecutar_orden(book_poseido, side="sell", tipo_monto="major", valor=saldo_poseido)
-            print(f"[Simulación] Venta de {cripto_poseida.upper()} ejecutada por Trailing Stop.")
+            print(f"[Simulación] Venta del 100% de {cripto_poseida.upper()} ejecutada.")
             
-            # Resetear estado
             ESTADO_POSICION["cripto_actual"] = None
             ESTADO_POSICION["precio_maximo_alcanzado"] = 0.0
             return
 
-        # REGLA 2: Rotación inteligente calculando comisiones
+        # REGLA 2: Rotación Inteligente
         if mercado_lider['cripto'] != cripto_poseida:
             diferencia_rendimiento = mercado_lider['variacion'] - variacion_poseida
             
@@ -214,47 +206,49 @@ def ciclo_principal():
             print(f"   -> Ventaja del líder: +{diferencia_rendimiento:.2f}% (Requerido para rotar: +{UMBRAL_DIFERENCIA_ROTACION:.2f}%)")
 
             if diferencia_rendimiento >= UMBRAL_DIFERENCIA_ROTACION:
-                print(f"🔄 ¡ROTACIÓN RENTABLE DETECTADA! La ventaja supera el costo de comisiones.")
-                print(f"1. Vendiendo {cripto_poseida.upper()} a MXN...")
+                print(f"🔄 ¡ROTACIÓN DETECTADA! La ventaja paga comisiones ampliamente.")
+                print(f"1. Vendiendo 100% de {cripto_poseida.upper()} a MXN...")
                 
                 # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
                 # ejecutar_orden(book_poseido, side="sell", tipo_monto="major", valor=saldo_poseido)
-                print(f"[Simulación] Venta de {cripto_poseida.upper()} completada para rotación.")
+                print(f"[Simulación] Venta de {cripto_poseida.upper()} completada.")
 
-                print(f"2. Comprando nueva moneda líder {mercado_lider['book'].upper()}...")
+                print(f"2. Comprando {mercado_lider['book'].upper()} con todo el capital recuperado...")
                 # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
-                # ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=MONTO_OPERACION_MXN)
-                print(f"[Simulación] Compra de {mercado_lider['book'].upper()} completada.")
+                # balances_recientes = obtener_balances()
+                # mxn_a_reinvertir = balances_recientes.get('mxn', 0.0)
+                # ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=mxn_a_reinvertir)
+                print(f"[Simulación] Re-inversión completa en {mercado_lider['book'].upper()}.")
                 
-                # Resetear estado para la nueva cripto
                 ESTADO_POSICION["cripto_actual"] = None
                 ESTADO_POSICION["precio_maximo_alcanzado"] = 0.0
                 return
             else:
-                print(f"💡 No conviene rotar aún: La diferencia es pequeña. Se mantiene {cripto_poseida.upper()}.")
+                print(f"💡 No conviene rotar aún. Se mantiene {cripto_poseida.upper()}.")
                 return
 
-        print(f"🟢 Manteniendo {cripto_poseida.upper()} dentro del margen seguro del Trailing Stop.")
+        print(f"🟢 Manteniendo {cripto_poseida.upper()} dentro del margen seguro.")
 
     # -------------------------------------------------------------
-    # ESCENARIO B: NO TENEMOS CRIPTOS (Comprar desde MXN)
+    # ESCENARIO B: NO TENEMOS CRIPTOS (Invertir todo el saldo MXN)
     # -------------------------------------------------------------
     else:
         if mercado_lider['variacion'] >= UMBRAL_MINIMO_GANANCIA:
             if mxn_disponible >= SALDO_MINIMO_REQUERIDO:
-                monto_a_gastar = min(MONTO_OPERACION_MXN, mxn_disponible)
-                print(f"🚀 Oportunidad detectada. Comprando {mercado_lider['book'].upper()} (${monto_a_gastar} MXN)...")
+                # Se toma el 100% de los pesos disponibles
+                monto_a_gastar = mxn_disponible
+                print(f"🚀 Oportunidad detectada. Comprando {mercado_lider['book'].upper()} con todo el saldo disponible (${monto_a_gastar:,.2f} MXN)...")
                 
                 # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
                 # ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=monto_a_gastar)
-                print(f"[Simulación] Compra inicial de {mercado_lider['book'].upper()}.")
+                print(f"[Simulación] Compra inicial del 100% del capital en {mercado_lider['book'].upper()}.")
             else:
-                print("⚪ Oportunidad detectada, pero el saldo MXN es menor al mínimo requerido.")
+                print("⚪ Oportunidad detectada, pero el saldo en MXN es menor al mínimo requerido.")
         else:
-            print("💤 Ningún mercado supera el umbral de compra. El dinero se queda a salvo en MXN.")
+            print("💤 Ningún mercado supera el umbral de compra. El dinero se queda 100% a salvo en MXN.")
 
 if __name__ == "__main__":
-    print("Iniciando bot con Trailing Stop y protección anti-comisiones...")
+    print("Iniciando bot de gestión de capital total (100% MXN)...")
     while True:
         ciclo_principal()
         print("\n⏳ Esperando próximo ciclo de revisión (30 minutos)...\n")
