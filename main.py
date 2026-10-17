@@ -24,6 +24,15 @@ SALDO_MINIMO_REQUERIDO = 50.0        # Mínimo en MXN para abrir compras
 UMBRAL_MINIMO_GANANCIA = 1.0         # % mínimo de crecimiento 24h para comprar desde MXN (ej. +1.0%)
 UMBRAL_DIFERENCIA_ROTACION = 2.5     # % EXTRA que debe superar la nueva moneda para justificar comisiones
 
+# --- NUEVOS PARÁMETROS: TRAILING STOP (Protección de Ganancias) ---
+PORCENTAJE_TRAILING_STOP = 1.5       # Si el precio cae 1.5% desde su punto más alto ganado, vende para asegurar.
+
+# Diccionario para rastrear el precio máximo alcanzado por la cripto que poseemos
+ESTADO_POSICION = {
+    "cripto_actual": None,
+    "precio_maximo_alcanzado": 0.0
+}
+
 # Lista de pares permitidos contra MXN
 MONEDAS_PERMITIDAS = ['btc_mxn', 'eth_mxn', 'xrp_mxn', 'sol_mxn']
 
@@ -125,8 +134,10 @@ def detectar_cripto_poseida(balances):
     return None, 0.0
 
 def ciclo_principal():
+    global ESTADO_POSICION
+    
     print("\n" + "="*50)
-    print("--- EVALUANDO MERCADO (CON PROTECCIÓN DE COMISIONES) ---")
+    print("--- EVALUANDO MERCADO (CON TRAILING STOP) ---")
     
     balances = obtener_balances()
     mxn_disponible = balances.get('mxn', 0.0)
@@ -134,10 +145,14 @@ def ciclo_principal():
 
     # 1. Identificar si ya tenemos cripto en portafolio
     cripto_poseida, saldo_poseido = detectar_cripto_poseida(balances)
-    if cripto_poseida:
-        print(f"📦 Posición activa: {cripto_poseida.upper()} ({saldo_poseido:,.8f})")
-    else:
+    
+    # Si el balance indica que no tenemos cripto, reseteamos el rastreador de máximos
+    if not cripto_poseida:
+        ESTADO_POSICION["cripto_actual"] = None
+        ESTADO_POSICION["precio_maximo_alcanzado"] = 0.0
         print("📦 No hay posiciones activas en cripto.")
+    else:
+        print(f"📦 Posición activa: {cripto_poseida.upper()} ({saldo_poseido:,.8f})")
 
     # 2. Escanear mercados
     mercados = escanear_mercados()
@@ -155,43 +170,71 @@ def ciclo_principal():
     if cripto_poseida:
         book_poseido = f"{cripto_poseida}_mxn"
         info_poseida = next((m for m in mercados if m['book'] == book_poseido), None)
-        variacion_poseida = info_poseida['variacion'] if info_poseida else 0.0
+        
+        if not info_poseida:
+            return
 
-        # REGLE DE ORO 1: Si nuestra moneda baja a números negativos, VENDER A MXN INMEDIATAMENTE
-        if variacion_poseida < 0:
-            print(f"🛡️ {cripto_poseida.upper()} cayó a rendimiento negativo ({variacion_poseida:+.2f}%). Resguardando dinero en MXN...")
+        precio_actual = info_poseida['precio']
+        variacion_poseida = info_poseida['variacion']
+
+        # Inicializar o actualizar el precio máximo del Trailing Stop
+        if ESTADO_POSICION["cripto_actual"] != cripto_poseida:
+            # Si acabamos de detectar una nueva cripto en el balance, fijamos su precio actual como base
+            ESTADO_POSICION["cripto_actual"] = cripto_poseida
+            ESTADO_POSICION["precio_maximo_alcanzado"] = precio_actual
+            print(f"📈 [Trailing Stop] Nueva posición registrada. Precio base inicial: ${precio_actual:,.2f}")
+        else:
+            # Si el precio actual supera al máximo histórico registrado, lo actualizamos hacia arriba
+            if precio_actual > ESTADO_POSICION["precio_maximo_alcanzado"]:
+                ESTADO_POSICION["precio_maximo_alcanzado"] = precio_actual
+                print(f"🚀 [Trailing Stop] ¡Nuevo pico máximo alcanzado para {cripto_poseida.upper()}! -> ${precio_actual:,.2f}")
+
+        # Calcular el precio límite de venta (Caída permitida desde el pico máximo)
+        precio_limite_venta = ESTADO_POSICION["precio_maximo_alcanzado"] * (1 - (PORCENTAJE_TRAILING_STOP / 100))
+        print(f"🛡️ [Trailing Stop] Pico: ${ESTADO_POSICION['precio_maximo_alcanzado']:,.2f} | Límite de venta dinámico: ${precio_limite_venta:,.2f}")
+
+        # REGLA 1: Trailing Stop (Vender si el precio cae desde su pico) o si pasa a negativo
+        if precio_actual <= precio_limite_venta or variacion_poseida < 0:
+            print(f"⚠️ El precio cayó desde su pico máximo o el mercado empeoró. Asegurando ganancias/protegiendo en MXN...")
             
             # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
             # ejecutar_orden(book_poseido, side="sell", tipo_monto="major", valor=saldo_poseido)
-            print(f"[Simulación] Venta de {cripto_poseida.upper()} ejecutada para evitar pérdidas.")
+            print(f"[Simulación] Venta de {cripto_poseida.upper()} ejecutada por Trailing Stop.")
+            
+            # Resetear estado
+            ESTADO_POSICION["cripto_actual"] = None
+            ESTADO_POSICION["precio_maximo_alcanzado"] = 0.0
             return
 
-        # REGLA DE ORO 2: Rotación inteligente calculando comisiones
+        # REGLA 2: Rotación inteligente calculando comisiones
         if mercado_lider['cripto'] != cripto_poseida:
             diferencia_rendimiento = mercado_lider['variacion'] - variacion_poseida
             
             print(f"📊 Comparativa: Líder {mercado_lider['cripto'].upper()} ({mercado_lider['variacion']:+.2f}%) vs Tu {cripto_poseida.upper()} ({variacion_poseida:+.2f}%)")
             print(f"   -> Ventaja del líder: +{diferencia_rendimiento:.2f}% (Requerido para rotar: +{UMBRAL_DIFERENCIA_ROTACION:.2f}%)")
 
-            # Solo rotamos si la ventaja PAGA las comisiones de cambio y deja margen limpio
             if diferencia_rendimiento >= UMBRAL_DIFERENCIA_ROTACION:
-                print(f"🚀 ¡ROTACIÓN RENTABLE DETECTADA! La ventaja supera el costo de comisiones.")
+                print(f"🔄 ¡ROTACIÓN RENTABLE DETECTADA! La ventaja supera el costo de comisiones.")
                 print(f"1. Vendiendo {cripto_poseida.upper()} a MXN...")
                 
                 # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
                 # ejecutar_orden(book_poseido, side="sell", tipo_monto="major", valor=saldo_poseido)
-                print(f"[Simulación] Venta de {cripto_poseida.upper()} completada.")
+                print(f"[Simulación] Venta de {cripto_poseida.upper()} completada para rotación.")
 
                 print(f"2. Comprando nueva moneda líder {mercado_lider['book'].upper()}...")
                 # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
                 # ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=MONTO_OPERACION_MXN)
                 print(f"[Simulación] Compra de {mercado_lider['book'].upper()} completada.")
+                
+                # Resetear estado para la nueva cripto
+                ESTADO_POSICION["cripto_actual"] = None
+                ESTADO_POSICION["precio_maximo_alcanzado"] = 0.0
                 return
             else:
-                print(f"💡 No conviene rotar aún: La diferencia (+{diferencia_rendimiento:.2f}%) es pequeña y se perdería en comisiones. Se mantiene {cripto_poseida.upper()}.")
+                print(f"💡 No conviene rotar aún: La diferencia es pequeña. Se mantiene {cripto_poseida.upper()}.")
                 return
 
-        print(f"🟢 Manteniendo {cripto_poseida.upper()}. Sigue encabezando el mercado.")
+        print(f"🟢 Manteniendo {cripto_poseida.upper()} dentro del margen seguro del Trailing Stop.")
 
     # -------------------------------------------------------------
     # ESCENARIO B: NO TENEMOS CRIPTOS (Comprar desde MXN)
@@ -211,7 +254,7 @@ def ciclo_principal():
             print("💤 Ningún mercado supera el umbral de compra. El dinero se queda a salvo en MXN.")
 
 if __name__ == "__main__":
-    print("Iniciando bot con protección anti-comisiones de rotación...")
+    print("Iniciando bot con Trailing Stop y protección anti-comisiones...")
     while True:
         ciclo_principal()
         print("\n⏳ Esperando próximo ciclo de revisión (30 minutos)...\n")
