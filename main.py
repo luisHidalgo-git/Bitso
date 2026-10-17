@@ -19,9 +19,10 @@ if not API_KEY or not API_SECRET:
 BASE_URL = "https://api.bitso.com"
 
 # --- PARÁMETROS DE LA ESTRATEGIA ---
-MONTO_OPERACION_MXN = 200.0       # Cantidad máxima en MXN a gastar por operación
-SALDO_MINIMO_REQUERIDO = 50.0     # Mínimo en MXN para abrir nuevas compras
-UMBRAL_MINIMO_GANANCIA = 1.0      # % de crecimiento de 24h mínimo para comprar
+MONTO_OPERACION_MXN = 200.0          # Cantidad en MXN a gastar por operación
+SALDO_MINIMO_REQUERIDO = 50.0        # Mínimo en MXN para abrir compras
+UMBRAL_MINIMO_GANANCIA = 1.0         # % mínimo de crecimiento 24h para comprar desde MXN (ej. +1.0%)
+UMBRAL_DIFERENCIA_ROTACION = 2.5     # % EXTRA que debe superar la nueva moneda para justificar comisiones
 
 # Lista de pares permitidos contra MXN
 MONEDAS_PERMITIDAS = ['btc_mxn', 'eth_mxn', 'xrp_mxn', 'sol_mxn']
@@ -42,7 +43,7 @@ def crear_firma_bitso(http_method, request_path, payload=""):
     }
 
 def obtener_balances():
-    """Consulta los balances disponibles en tu cuenta."""
+    """Consulta los balances disponibles en tu cuenta de Bitso."""
     path = "/v3/balance/"
     headers = crear_firma_bitso("GET", path)
     balances_dict = {"mxn": 0.0}
@@ -59,7 +60,7 @@ def obtener_balances():
     return balances_dict
 
 def escanear_mercados():
-    """Obtiene y ordena los mercados de la lista permitida según su variación de 24h."""
+    """Obtiene y ordena los mercados según su variación de 24h."""
     url = f"{BASE_URL}/v3/ticker/"
     try:
         response = requests.get(url)
@@ -79,7 +80,7 @@ def escanear_mercados():
                         "volumen": float(t['volume'])
                     })
             
-            # Ordenar de mayor a menor rendimiento en 24 horas
+            # Ordenar de mayor a menor rendimiento en 24h
             mercados_validos.sort(key=lambda x: x['variacion'], reverse=True)
             return mercados_validos
     except Exception as e:
@@ -88,7 +89,7 @@ def escanear_mercados():
     return []
 
 def ejecutar_orden(book, side, tipo_monto, valor):
-    """Envía órdenes de mercado a Bitso."""
+    """Envía órdenes de mercado (buy/sell) a Bitso."""
     path = "/v3/orders/"
     payload_data = {
         "book": book,
@@ -112,8 +113,7 @@ def ejecutar_orden(book, side, tipo_monto, valor):
     return False
 
 def detectar_cripto_poseida(balances):
-    """Identifica si el bot posee saldo en alguna cripto de la lista permitida."""
-    # Equivalentes mínimos para ignorar remanentes insignificantes
+    """Identifica si tenemos saldo activo en alguna de las criptos permitidas."""
     minimos = {'btc': 0.0001, 'eth': 0.001, 'xrp': 1.0, 'sol': 0.01}
     
     for cripto in ['btc', 'eth', 'xrp', 'sol']:
@@ -126,20 +126,20 @@ def detectar_cripto_poseida(balances):
 
 def ciclo_principal():
     print("\n" + "="*50)
-    print("--- INICIANDO CICLO DE EVALUACIÓN Y ROTACIÓN ---")
+    print("--- EVALUANDO MERCADO (CON PROTECCIÓN DE COMISIONES) ---")
     
     balances = obtener_balances()
     mxn_disponible = balances.get('mxn', 0.0)
     print(f"💰 Saldo MXN disponible: ${mxn_disponible:,.2f}")
 
-    # 1. Identificar si tenemos una cripto activa en nuestro portafolio
+    # 1. Identificar si ya tenemos cripto en portafolio
     cripto_poseida, saldo_poseido = detectar_cripto_poseida(balances)
     if cripto_poseida:
-        print(f"📦 Tienes una posición activa en: {cripto_poseida.upper()} ({saldo_poseido:,.8f})")
+        print(f"📦 Posición activa: {cripto_poseida.upper()} ({saldo_poseido:,.8f})")
     else:
-        print("📦 No posees posiciones activas en criptomonedas.")
+        print("📦 No hay posiciones activas en cripto.")
 
-    # 2. Escanear el ranking de mercados
+    # 2. Escanear mercados
     mercados = escanear_mercados()
     if not mercados:
         print("No se pudo obtener información del mercado.")
@@ -150,61 +150,69 @@ def ciclo_principal():
     print(f"   -> Precio: ${mercado_lider['precio']:,.2f} | Variación 24h: {mercado_lider['variacion']:+.2f}%")
 
     # -------------------------------------------------------------
-    # ESCENARIO A: YA POSEEMOS UNA CRIPTOMONEDA (Gestión de posición)
+    # ESCENARIO A: YA TENEMOS UNA CRIPTO COMPRADA
     # -------------------------------------------------------------
     if cripto_poseida:
         book_poseido = f"{cripto_poseida}_mxn"
-        
-        # Buscar la información del mercado de la cripto que poseemos
         info_poseida = next((m for m in mercados if m['book'] == book_poseido), None)
-        
-        # Regla 1: Si la cripto poseída entra en tendencia bajista/negativa, VENDER A MXN inmediatame
-        if info_poseida and info_poseida['variacion'] < 0:
-            print(f"🛡️ La cripto poseída ({cripto_poseida.upper()}) cayó a variación negativa ({info_poseida['variacion']:+.2f}%). Protegiendo en MXN...")
+        variacion_poseida = info_poseida['variacion'] if info_poseida else 0.0
+
+        # REGLE DE ORO 1: Si nuestra moneda baja a números negativos, VENDER A MXN INMEDIATAMENTE
+        if variacion_poseida < 0:
+            print(f"🛡️ {cripto_poseida.upper()} cayó a rendimiento negativo ({variacion_poseida:+.2f}%). Resguardando dinero en MXN...")
             
-            # --- DESCOMENTAR PARA REAL ---
+            # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
             # ejecutar_orden(book_poseido, side="sell", tipo_monto="major", valor=saldo_poseido)
-            print(f"[Simulación] Venta de {cripto_poseida.upper()} a MXN por caída de valor.")
+            print(f"[Simulación] Venta de {cripto_poseida.upper()} ejecutada para evitar pérdidas.")
             return
 
-        # Regla 2: Rotación de mercado (Si la líder supera a nuestra cripto poseída)
-        if mercado_lider['cripto'] != cripto_poseida and mercado_lider['variacion'] >= UMBRAL_MINIMO_GANANCIA:
-            variacion_actual = info_poseida['variacion'] if info_poseida else 0.0
-            print(f"🔄 ROTACIÓN DETECTADA: {mercado_lider['cripto'].upper()} ({mercado_lider['variacion']:+.2f}%) superó a tu {cripto_poseida.upper()} ({variacion_actual:+.2f}%).")
-            print(f"1. Liquidadndo {cripto_poseida.upper()} a MXN...")
+        # REGLA DE ORO 2: Rotación inteligente calculando comisiones
+        if mercado_lider['cripto'] != cripto_poseida:
+            diferencia_rendimiento = mercado_lider['variacion'] - variacion_poseida
             
-            # --- DESCOMENTAR PARA REAL ---
-            # ejecutar_orden(book_poseido, side="sell", tipo_monto="major", valor=saldo_poseido)
-            print(f"[Simulación] Venta de {cripto_poseida.upper()} para rotación.")
+            print(f"📊 Comparativa: Líder {mercado_lider['cripto'].upper()} ({mercado_lider['variacion']:+.2f}%) vs Tu {cripto_poseida.upper()} ({variacion_poseida:+.2f}%)")
+            print(f"   -> Ventaja del líder: +{diferencia_rendimiento:.2f}% (Requerido para rotar: +{UMBRAL_DIFERENCIA_ROTACION:.2f}%)")
 
-            print(f"2. Comprando {mercado_lider['book'].upper()} con los fondos en MXN...")
-            # --- DESCOMENTAR PARA REAL ---
-            # ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=MONTO_OPERACION_MXN)
-            print(f"[Simulación] Compra de {mercado_lider['book'].upper()} por rotación de oportunidad.")
-            return
+            # Solo rotamos si la ventaja PAGA las comisiones de cambio y deja margen limpio
+            if diferencia_rendimiento >= UMBRAL_DIFERENCIA_ROTACION:
+                print(f"🚀 ¡ROTACIÓN RENTABLE DETECTADA! La ventaja supera el costo de comisiones.")
+                print(f"1. Vendiendo {cripto_poseida.upper()} a MXN...")
+                
+                # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
+                # ejecutar_orden(book_poseido, side="sell", tipo_monto="major", valor=saldo_poseido)
+                print(f"[Simulación] Venta de {cripto_poseida.upper()} completada.")
 
-        print(f"🟢 Manteniendo {cripto_poseida.upper()}. Sigue liderando o manteniendo buena tendencia sin ser superada.")
+                print(f"2. Comprando nueva moneda líder {mercado_lider['book'].upper()}...")
+                # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
+                # ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=MONTO_OPERACION_MXN)
+                print(f"[Simulación] Compra de {mercado_lider['book'].upper()} completada.")
+                return
+            else:
+                print(f"💡 No conviene rotar aún: La diferencia (+{diferencia_rendimiento:.2f}%) es pequeña y se perdería en comisiones. Se mantiene {cripto_poseida.upper()}.")
+                return
+
+        print(f"🟢 Manteniendo {cripto_poseida.upper()}. Sigue encabezando el mercado.")
 
     # -------------------------------------------------------------
-    # ESCENARIO B: NO POSEEMOS CRIPTOS (Comprar oportunamente)
+    # ESCENARIO B: NO TENEMOS CRIPTOS (Comprar desde MXN)
     # -------------------------------------------------------------
     else:
         if mercado_lider['variacion'] >= UMBRAL_MINIMO_GANANCIA:
             if mxn_disponible >= SALDO_MINIMO_REQUERIDO:
                 monto_a_gastar = min(MONTO_OPERACION_MXN, mxn_disponible)
-                print(f"🚀 Comprando líder {mercado_lider['book'].upper()} (${monto_a_gastar} MXN)...")
+                print(f"🚀 Oportunidad detectada. Comprando {mercado_lider['book'].upper()} (${monto_a_gastar} MXN)...")
                 
-                # --- DESCOMENTAR PARA REAL ---
+                # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
                 # ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=monto_a_gastar)
                 print(f"[Simulación] Compra inicial de {mercado_lider['book'].upper()}.")
             else:
-                print("⚪ Oportunidad detectada, pero el saldo en MXN es menor al mínimo requerido.")
+                print("⚪ Oportunidad detectada, pero el saldo MXN es menor al mínimo requerido.")
         else:
-            print("💤 Ningún mercado alcanza el umbral mínimo de ganancias. El capital se mantiene a salvo en MXN.")
+            print("💤 Ningún mercado supera el umbral de compra. El dinero se queda a salvo en MXN.")
 
 if __name__ == "__main__":
-    print("Iniciando bot con rotación automática de mercado...")
+    print("Iniciando bot con protección anti-comisiones de rotación...")
     while True:
         ciclo_principal()
-        print("\n⏳ Esperando el próximo ciclo de revisión (30 minutos)...\n")
+        print("\n⏳ Esperando próximo ciclo de revisión (30 minutos)...\n")
         time.sleep(1800)
