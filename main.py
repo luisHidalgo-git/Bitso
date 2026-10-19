@@ -267,4 +267,4 @@ if __name__ == "__main__":
     while True:
         ciclo_principal()
         print("\n⏳ Esperando próximo ciclo de revisión (30 minutos)...\n")
-        time.sleep(1800)
+        time.sleep(60)
