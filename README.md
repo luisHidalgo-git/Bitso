@@ -1,206 +1,144 @@
-# Escáner dinámico multi-mercado de Bitso
+# Bot de monitoreo y simulación para Bitso
 
-Bot de trading automatizado para Bitso que monitorea cada 30 minutos el rendimiento de criptomonedas contra pesos mexicanos (MXN) y, si detecta una tendencia alcista fuerte, simula una compra.
+Bot de Python que consulta balances y mercados de Bitso, evalúa una estrategia
+para pares contra MXN y reporta las decisiones en la consola y, opcionalmente,
+por Telegram.
 
-Por defecto, el script **no ejecuta órdenes reales**: la línea de compra está comentada como medida de seguridad.
+**El comportamiento actual es de simulación:** las llamadas que enviarían
+órdenes de compra y venta reales están comentadas. Las alertas y mensajes de
+simulación no ejecutan operaciones.
 
-## ⚠️ Advertencia
+## Advertencia
 
-Este proyecto es educativo y experimental. **No es una estrategia probada ni garantiza rentabilidad.**
+Este proyecto es educativo y experimental. No es asesoría financiera, no es
+una estrategia probada y no garantiza rentabilidad. La estrategia puede
+reaccionar a movimientos pasados y no considera comisiones, spread, liquidez ni
+slippage. Si se habilitan las llamadas de órdenes reales, estas pueden exponer
+los fondos a pérdidas.
 
-Comprar únicamente el activo con mayor subida en 24 horas puede implicar comprar después de un movimiento fuerte y enfrentar una corrección posterior. Además, el bot:
+## Cómo funciona
 
-- Solo compra; no vende.
-- No implementa stop-loss ni toma de ganancias.
-- No considera comisiones, spread, liquidez ni slippage.
-- Puede comprar el mismo activo repetidamente cada 30 minutos si se cumplen las condiciones.
-- Usa órdenes de mercado, cuyo precio final puede diferir del precio observado durante el escaneo.
+Al iniciar, el bot carga las variables de entorno y envía un mensaje de inicio.
+Después, `main.py` repite el ciclo de evaluación cada **60 segundos**:
 
-Úsalo primero en modo simulación y con fondos que puedas permitirte perder.
+1. Consulta los balances disponibles de la cuenta de Bitso.
+2. Consulta los tickers públicos y filtra los pares permitidos contra MXN:
+   BTC, ETH, XRP y SOL.
+3. Ordena esos mercados por su variación de 24 horas y toma el de mayor
+   variación como líder.
+4. Si detecta una posición existente en alguna de esas criptomonedas, aplica
+   estas reglas:
+   - **Protección:** simula una venta si el precio cae al menos 1.5 % desde el
+     máximo registrado en el proceso, o si la variación de 24 horas del activo
+     es negativa.
+   - **Rotación:** si otro mercado es líder y su variación supera la del activo
+     actual por al menos 2.5 puntos porcentuales, reporta una rotación simulada.
+   - Si no se activa ninguna regla, informa que mantiene la posición.
+5. Si no detecta una posición, simula una compra del líder cuando su variación
+   de 24 horas es al menos 1 % y hay por lo menos 50 MXN disponibles. El monto
+   mostrado es el saldo MXN completo.
+6. Espera un minuto y comienza el siguiente ciclo.
 
-## 📌 ¿Qué hace?
+La posición se infiere de los balances de la cuenta; el máximo del trailing
+stop se conserva solo en memoria y se reinicia al cerrar el programa. Los
+umbrales usados para reconocer balances como posiciones son BTC `0.0001`, ETH
+`0.001`, XRP `1.0` y SOL `0.01`.
 
-1. Carga las credenciales de Bitso desde un archivo `.env`.
-2. Consulta el saldo disponible en MXN de tu cuenta.
-3. Consulta los tickers públicos de Bitso.
-4. Filtra únicamente los mercados incluidos en la lista blanca y denominados en MXN.
-5. Ordena los mercados por su variación porcentual de las últimas 24 horas (`change_24`).
-6. Si el mejor mercado supera el umbral de ganancia y hay saldo suficiente, genera una orden de compra simulada.
-7. Espera 30 minutos y repite el ciclo indefinidamente.
+## Estructura del proyecto
 
-## ⚙️ Parámetros de estrategia
-
-| Parámetro | Valor actual | Descripción |
-|---|---:|---|
-| `MONTO_OPERACION_MXN` | `200.0` | Monto máximo a gastar por operación, en MXN. |
-| `SALDO_MINIMO_REQUERIDO` | `50.0` | Saldo mínimo en MXN necesario para operar. |
-| `UMBRAL_MINIMO_GANANCIA` | `1.0` | Variación mínima de 24h para considerar una compra, en porcentaje. |
-| `MONEDAS_PERMITIDAS` | BTC, ETH, XRP, SOL | Lista blanca de pares contra MXN que el bot puede analizar. |
-
-Puedes modificar estos valores directamente en el script:
-
-```python
-MONTO_OPERACION_MXN = 200.0
-SALDO_MINIMO_REQUERIDO = 50.0
-UMBRAL_MINIMO_GANANCIA = 1.0
-
-MONEDAS_PERMITIDAS = [
-    "btc_mxn",
-    "eth_mxn",
-    "xrp_mxn",
-    "sol_mxn"
-]
+```text
+.
+├── main.py                 # Punto de entrada y bucle de ejecución
+└── bitso_bot/
+    ├── __init__.py
+    ├── config.py           # Variables de entorno y parámetros
+    ├── notifications.py    # Salida en consola y alertas de Telegram
+    ├── bitso_api.py        # Firma, consultas y envío de órdenes a Bitso
+    └── strategy.py         # Evaluación de balances y estrategia
 ```
 
-## 🧰 Requisitos
+`main.py` importa y ejecuta los componentes del paquete `bitso_bot`. Ejecuta el
+bot desde la raíz del proyecto para que Python encuentre el paquete.
 
-- Python 3.7 o superior.
-- Cuenta de Bitso.
-- API Key y API Secret de Bitso.
-- Permisos de API para consultar balance.
-- Permisos de trading, únicamente si activas compras reales.
+## Requisitos e instalación
+
+- Python instalado.
+- Cuenta de Bitso y credenciales API con permiso para consultar balances.
 - Conexión a internet.
 
-## 📦 Instalación
-
-Clona el repositorio:
+Instala las dependencias desde la raíz del proyecto:
 
 ```bash
-git clone [https://github.com/tu-usuario/tu-repositorio.git](https://github.com/tu-usuario/tu-repositorio.git)
-cd tu-repositorio
+python -m pip install -r requirements.txt
 ```
 
-Instala las dependencias:
+## Configuración
 
-```bash
-pip install -r requirements.txt
-```
-
-## 🔐 Configuración
-
-Crea un archivo llamado `.env` en la raíz del proyecto:
+Crea un archivo `.env` en la raíz del proyecto:
 
 ```env
 BITSO_API_KEY=tu_api_key_de_bitso
 BITSO_API_SECRET=tu_api_secret_de_bitso
 ```
 
-**Nunca compartas ni subas tu archivo `.env` a GitHub.**
+Las credenciales de Bitso son obligatorias porque el bot consulta los balances
+privados. Para recibir notificaciones por Telegram, agrega también:
 
-Agrega esta línea a tu archivo `.gitignore`:
-
-```gitignore
-.env
+```env
+TELEGRAM_BOT_TOKEN=token_de_tu_bot
+TELEGRAM_CHAT_ID=id_del_chat
 ```
 
-## ▶️ Ejecución
+Telegram es opcional: si no se configuran ambas variables, los mensajes se
+imprimen en la consola. No compartas ni subas `.env` al repositorio.
 
-Guarda el script como `bitso_scanner.py` y ejecútalo:
+## Ejecución
+
+Desde la raíz del proyecto:
 
 ```bash
-python bitso_scanner.py
+python main.py
 ```
 
-El bot iniciará un bucle continuo y mostrará información como:
+Para detener el bucle, presiona `Ctrl + C`.
 
-- Saldo MXN disponible.
-- Mercado con mejor desempeño dentro de la lista permitida.
-- Precio actual y variación de 24 horas.
-- Si cumple o no las condiciones para comprar.
+## Parámetros actuales
 
-Para detener el bot, presiona:
+Los valores se definen en `bitso_bot/config.py`:
 
-```bash
-Ctrl + C
-```
+| Parámetro | Valor | Uso |
+|---|---:|---|
+| `SALDO_MINIMO_REQUERIDO` | `50.0` MXN | Saldo mínimo para la compra simulada inicial. |
+| `UMBRAL_MINIMO_GANANCIA` | `1.0` % | Variación mínima de 24 horas para considerar esa compra. |
+| `UMBRAL_DIFERENCIA_ROTACION` | `2.5` puntos porcentuales | Ventaja mínima del nuevo líder para simular una rotación. |
+| `PORCENTAJE_TRAILING_STOP` | `1.5` % | Caída desde el máximo que activa la protección simulada. |
+| `MONEDAS_PERMITIDAS` | BTC, ETH, XRP y SOL contra MXN | Mercados que se analizan. |
 
-## 🧠 Lógica de decisión
+El script no limita el importe de la compra simulada a un monto fijo: muestra el
+saldo MXN disponible completo.
 
-El bot selecciona el mercado con mayor variación positiva en 24 horas entre los pares permitidos.
+## API de Bitso y órdenes reales
 
-Si cumple estas condiciones:
-
-```text
-variacion_24h >= UMBRAL_MINIMO_GANANCIA
-saldo_mxn >= SALDO_MINIMO_REQUERIDO
-```
-
-Entonces calcula:
-
-```python
-monto_a_gastar = min(MONTO_OPERACION_MXN, saldo_mxn_disponible)
-```
-
-Y muestra una compra simulada por ese monto.
-
-## 🔏 Autenticación con Bitso
-
-Para endpoints privados, el script genera un `nonce` basado en la hora actual y firma la petición con HMAC-SHA256 usando el API Secret.
-
-La cabecera generada tiene este formato:
-
-```text
-Authorization: Bitso <API_KEY>:<nonce>:<firma>
-```
-
-La firma se calcula sobre:
+Para consultar el balance, `bitso_bot/bitso_api.py` crea una firma HMAC-SHA256.
+La firma se calcula a partir de:
 
 ```text
 nonce + método HTTP + ruta + payload JSON
 ```
 
-## 🛒 Compra real vs. simulación
+El código incluye `ejecutar_orden(...)` para enviar órdenes de mercado, pero
+las llamadas desde la estrategia están comentadas. En su estado actual, tanto
+las compras como las ventas y rotaciones son únicamente simulaciones.
 
-Actualmente, la compra es simulada:
+No habilites órdenes reales sin revisar cuidadosamente los importes, permisos y
+riesgos. Si se descomentan llamadas, el bot puede enviar órdenes reales a
+Bitso; las órdenes de mercado pueden ejecutarse a un precio distinto del
+observado durante el análisis.
 
-```python
-# ejecutar_orden(
-#     mejor_mercado["book"],
-#     side="buy",
-#     tipo_monto="minor",
-#     valor=monto_a_gastar
-# )
+## Limitaciones
 
-print(
-    f"[Simulación] Se habrían comprado ${monto_a_gastar} MXN "
-    f"de {mejor_mercado['book'].upper()}."
-)
-```
-
-Si descomentas la llamada a `ejecutar_orden(...)`, el bot enviará una **orden de mercado real de compra** a Bitso.
-
-Una orden de mercado se ejecuta al mejor precio disponible en ese momento, por lo que puede haber diferencias entre el precio mostrado durante el análisis y el precio final de ejecución.
-
-## 🧪 Ejemplo de salida
-
-```text
-Iniciando escáner dinámico multi-mercado de Bitso...
-
---- Escaneando el mercado global de Bitso ---
-💰 Saldo MXN disponible: $1,250.00
-🏆 Mercado líder actual: SOL_MXN
-   -> Precio: $2,041.78 | Variación 24h: +3.25%
-🚀 ¡Tendencia alcista fuerte en SOL_MXN! Comprando con $200.0 MXN...
-[Simulación] Se habrían comprado $200.0 MXN de SOL_MXN.
-
-Esperando el próximo ciclo de escaneo (30 minutos)...
-```
-
-## 🚧 Posibles mejoras
-
-- Agregar venta automática.
-- Implementar stop-loss y objetivo de ganancia.
-- Evitar comprar el mismo activo en ciclos consecutivos.
-- Registrar operaciones en CSV o una base de datos.
-- Validar volumen mínimo antes de operar.
-- Manejar errores HTTP y reintentos de forma más robusta.
-- Usar órdenes limit en lugar de órdenes market.
-- Agregar pruebas unitarias y logs.
-
-## 📄 Licencia
-
-Puedes agregar la licencia que prefieras, por ejemplo MIT:
-
-```text
-MIT License
-```
+- El precio máximo del trailing stop no se guarda entre ejecuciones.
+- La posición se determina a partir de los balances, no de un registro de
+  operaciones del bot.
+- La estrategia no calcula comisiones, spread, slippage ni rendimiento neto.
+- Las consultas HTTP no configuran una política de reintentos.
