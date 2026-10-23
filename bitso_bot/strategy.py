@@ -101,7 +101,7 @@ def ciclo_principal():
 
             # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
             ejecutar_orden(book_poseido, side="sell", tipo_monto="major", valor=saldo_poseido)
-            print(f"[Simulación] Venta del 100% de {cripto_poseida.upper()} ejecutada.")
+            # print(f"[Simulación] Venta del 100% de {cripto_poseida.upper()} ejecutada.")
 
             ESTADO_POSICION["cripto_actual"] = None
             ESTADO_POSICION["precio_maximo_alcanzado"] = 0.0
@@ -136,7 +136,7 @@ def ciclo_principal():
                 mxn_a_reinvertir = balances_recientes.get('mxn', 0.0)
                 ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=mxn_a_reinvertir)
                 print(
-                    f"[Simulación] Rotación completada hacia "
+                    # f"[Simulación] Rotación completada hacia "
                     f"{mercado_lider['book'].upper()}."
                 )
 
@@ -163,7 +163,7 @@ def ciclo_principal():
                 # --- DESCOMENTAR PARA OPERAR CON DINERO REAL ---
                 ejecutar_orden(mercado_lider['book'], side="buy", tipo_monto="minor", valor=monto_a_gastar)
                 print(
-                    f"[Simulación] Compra inicial del 100% del capital en "
+                    # f"[Simulación] Compra inicial del 100% del capital en "
                     f"{mercado_lider['book'].upper()}."
                 )
             else:
