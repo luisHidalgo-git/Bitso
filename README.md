@@ -49,6 +49,7 @@ umbrales usados para reconocer balances como posiciones son BTC `0.0001`, ETH
 ```text
 .
 ├── main.py                 # Punto de entrada y bucle de ejecución
+├── railway.json            # Comando de inicio y política de reinicio en Railway
 └── bitso_bot/
     ├── __init__.py
     ├── config.py           # Variables de entorno y parámetros
@@ -101,6 +102,25 @@ python main.py
 ```
 
 Para detener el bucle, presiona `Ctrl + C`.
+
+## Despliegue en Railway
+
+Este proyecto se ejecuta como un **servicio worker**, no como una aplicación
+web: no expone un puerto HTTP ni necesita un dominio público. Railway detecta
+`requirements.txt` para instalar las dependencias y usa `railway.json` para
+iniciar el proceso con `python main.py` y reiniciarlo si termina con error.
+
+1. Sube el proyecto a un repositorio Git y crea un proyecto en Railway desde
+   ese repositorio.
+2. En el servicio, abre **Variables** y agrega:
+   - `BITSO_API_KEY`
+   - `BITSO_API_SECRET`
+   - Opcionalmente, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`
+3. Despliega el servicio y revisa **Deployments > View Logs** para confirmar
+   que el bot inició correctamente.
+
+No configures un dominio ni una variable `PORT`. Las variables de Railway
+reemplazan el archivo `.env` local; no subas ese archivo al repositorio.
 
 ## Parámetros actuales
 
