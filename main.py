@@ -5,9 +5,12 @@ from bitso_bot.strategy import ciclo_principal
 
 
 def main():
-    print("Iniciando bot con logs completos en consola y alertas en Telegram...")
+    print(
+        "Iniciando bot con operaciones reales habilitadas, "
+        "logs en consola y alertas en Telegram..."
+    )
     enviar_alerta_telegram(
-        "🤖 <b>Bot de Bitso iniciado correctamente en la nube</b> "
+        "🤖 <b>Bot de Bitso iniciado con operaciones reales habilitadas</b> "
         "(Monitoreo activo)."
     )
     while True:

@@ -1,20 +1,23 @@
-# Bot de monitoreo y simulación para Bitso
+# Bot de trading automático para Bitso
 
 Bot de Python que consulta balances y mercados de Bitso, evalúa una estrategia
 para pares contra MXN y reporta las decisiones en la consola y, opcionalmente,
 por Telegram.
 
-**El comportamiento actual es de simulación:** las llamadas que enviarían
-órdenes de compra y venta reales están comentadas. Las alertas y mensajes de
-simulación no ejecutan operaciones.
+**Las órdenes reales están habilitadas.** Al cumplirse las reglas de la
+estrategia, el bot envía órdenes de mercado a Bitso con las credenciales API
+configuradas. No lo ejecutes con credenciales que no tengan permiso para
+operar.
 
 ## Advertencia
 
 Este proyecto es educativo y experimental. No es asesoría financiera, no es
 una estrategia probada y no garantiza rentabilidad. La estrategia puede
 reaccionar a movimientos pasados y no considera comisiones, spread, liquidez ni
-slippage. Si se habilitan las llamadas de órdenes reales, estas pueden exponer
-los fondos a pérdidas.
+slippage. Las órdenes reales pueden exponer los fondos a pérdidas. El bot puede
+usar todo el saldo MXN disponible para una compra y vender todo el saldo
+disponible de una posición reconocida. Prueba primero con fondos limitados y
+revisa cuidadosamente los permisos de la API y los importes.
 
 ## Cómo funciona
 
@@ -28,15 +31,16 @@ Después, `main.py` repite el ciclo de evaluación cada **60 segundos**:
    variación como líder.
 4. Si detecta una posición existente en alguna de esas criptomonedas, aplica
    estas reglas:
-   - **Protección:** simula una venta si el precio cae al menos 1.5 % desde el
-     máximo registrado en el proceso, o si la variación de 24 horas del activo
-     es negativa.
+   - **Protección:** envía una orden de venta si el precio cae al menos 1.5 %
+     desde el máximo registrado en el proceso, o si la variación de 24 horas
+     del activo es negativa.
    - **Rotación:** si otro mercado es líder y su variación supera la del activo
-     actual por al menos 2.5 puntos porcentuales, reporta una rotación simulada.
+     actual por al menos 2.5 puntos porcentuales, vende la posición y compra el
+     líder con el saldo MXN disponible si alcanza el mínimo requerido.
    - Si no se activa ninguna regla, informa que mantiene la posición.
-5. Si no detecta una posición, simula una compra del líder cuando su variación
+5. Si no detecta una posición, compra el líder cuando su variación
    de 24 horas es al menos 1 % y hay por lo menos 50 MXN disponibles. El monto
-   mostrado es el saldo MXN completo.
+   de la orden es el saldo MXN disponible completo.
 6. Espera un minuto y comienza el siguiente ciclo.
 
 La posición se infiere de los balances de la cuenta; el máximo del trailing
@@ -128,14 +132,14 @@ Los valores se definen en `bitso_bot/config.py`:
 
 | Parámetro | Valor | Uso |
 |---|---:|---|
-| `SALDO_MINIMO_REQUERIDO` | `50.0` MXN | Saldo mínimo para la compra simulada inicial. |
-| `UMBRAL_MINIMO_GANANCIA` | `1.0` % | Variación mínima de 24 horas para considerar esa compra. |
-| `UMBRAL_DIFERENCIA_ROTACION` | `2.5` puntos porcentuales | Ventaja mínima del nuevo líder para simular una rotación. |
-| `PORCENTAJE_TRAILING_STOP` | `1.5` % | Caída desde el máximo que activa la protección simulada. |
+| `SALDO_MINIMO_REQUERIDO` | `50.0` MXN | Saldo mínimo para una compra. |
+| `UMBRAL_MINIMO_GANANCIA` | `1.0` % | Variación mínima de 24 horas para considerar la compra inicial. |
+| `UMBRAL_DIFERENCIA_ROTACION` | `2.5` puntos porcentuales | Ventaja mínima del nuevo líder para activar una rotación. |
+| `PORCENTAJE_TRAILING_STOP` | `1.5` % | Caída desde el máximo que activa la orden de venta. |
 | `MONEDAS_PERMITIDAS` | BTC, ETH, XRP y SOL contra MXN | Mercados que se analizan. |
 
-El script no limita el importe de la compra simulada a un monto fijo: muestra el
-saldo MXN disponible completo.
+El bot no limita el importe de la compra a un monto fijo: utiliza el saldo MXN
+disponible completo.
 
 ## API de Bitso y órdenes reales
 
@@ -146,14 +150,11 @@ La firma se calcula a partir de:
 nonce + método HTTP + ruta + payload JSON
 ```
 
-El código incluye `ejecutar_orden(...)` para enviar órdenes de mercado, pero
-las llamadas desde la estrategia están comentadas. En su estado actual, tanto
-las compras como las ventas y rotaciones son únicamente simulaciones.
-
-No habilites órdenes reales sin revisar cuidadosamente los importes, permisos y
-riesgos. Si se descomentan llamadas, el bot puede enviar órdenes reales a
-Bitso; las órdenes de mercado pueden ejecutarse a un precio distinto del
-observado durante el análisis.
+La estrategia llama a `ejecutar_orden(...)` para enviar órdenes de mercado
+reales: compra inicial, ventas por protección y compra/venta durante
+rotaciones. Una respuesta exitosa de la API se reporta como orden aceptada por
+Bitso, no como garantía de precio ni de ejecución final. Las órdenes de mercado
+pueden ejecutarse a un precio distinto del observado durante el análisis.
 
 ## Limitaciones
 

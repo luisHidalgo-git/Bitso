@@ -92,7 +92,7 @@ def ejecutar_orden(book, side, tipo_monto, valor):
         resultado = response.json()
         if resultado.get("success"):
             enviar_alerta_telegram(
-                f"✅ <b>Orden ejecutada con éxito</b>\n"
+                f"✅ <b>Orden aceptada por Bitso</b>\n"
                 f"• Acción: {side.upper()}\n• Mercado: {book.upper()}"
             )
             return True
