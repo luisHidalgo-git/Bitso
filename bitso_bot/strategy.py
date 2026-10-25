@@ -1,4 +1,4 @@
-from bitso_bot.bitso_api import escanear_mercados, obtener_balances
+from bitso_bot.bitso_api import ejecutar_orden, escanear_mercados, obtener_balances
 from bitso_bot.config import (
     PORCENTAJE_TRAILING_STOP,
     SALDO_MINIMO_REQUERIDO,
