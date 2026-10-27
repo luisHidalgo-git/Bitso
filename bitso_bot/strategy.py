@@ -16,6 +16,7 @@ from bitso_bot.notifications import enviar_alerta_telegram
 
 ESTADO_POSICION = {
     "cripto_actual": None,
+    "precio_entrada": 0.0,
     "precio_maximo_alcanzado": 0.0,
 }
 
@@ -135,29 +136,52 @@ def _ejecutar_orden(book, side, tipo_monto, valor, precio):
 
 def _registrar_posicion(crypto, price):
     ESTADO_POSICION["cripto_actual"] = crypto
-    ESTADO_POSICION["precio_maximo_alcanzado"] = price
     if _persistir_estado_posicion():
         estado_anterior = paper_state.get_state(_clave_estado_posicion()) or {}
         if estado_anterior.get("crypto") != crypto:
             estado_anterior = {}
+        precio_entrada = estado_anterior.get("entry_price", price)
+        precio_maximo = max(
+            price,
+            estado_anterior.get("highest_price", 0.0),
+        )
+    else:
+        precio_entrada = price
+        precio_maximo = price
+
+    ESTADO_POSICION["precio_entrada"] = precio_entrada
+    ESTADO_POSICION["precio_maximo_alcanzado"] = precio_maximo
+    if _persistir_estado_posicion():
         paper_state.set_state(
             _clave_estado_posicion(),
             {
                 "crypto": crypto,
-                "entry_price": estado_anterior.get("entry_price", price),
-                "highest_price": max(
-                    price,
-                    estado_anterior.get("highest_price", 0.0),
-                ),
+                "entry_price": precio_entrada,
+                "highest_price": precio_maximo,
             },
         )
 
 
 def _limpiar_posicion():
     ESTADO_POSICION["cripto_actual"] = None
+    ESTADO_POSICION["precio_entrada"] = 0.0
     ESTADO_POSICION["precio_maximo_alcanzado"] = 0.0
     if _persistir_estado_posicion():
         paper_state.set_state(_clave_estado_posicion(), None)
+
+
+def _debe_vender(precio_actual, precio_entrada, precio_maximo, variacion_24h):
+    precio_limite_trailing = precio_maximo * (
+        1 - PORCENTAJE_TRAILING_STOP / 100
+    )
+    precio_limite_perdida = precio_entrada * (
+        1 - STOP_LOSS_ESTIMADO_PORCENTAJE / 100
+    )
+    return (
+        precio_actual <= precio_limite_trailing
+        or precio_actual <= precio_limite_perdida
+        or variacion_24h < 0
+    )
 
 
 def ciclo_principal():
@@ -215,6 +239,7 @@ def ciclo_principal():
                 precio_actual,
                 precio_maximo_guardado,
             )
+            ESTADO_POSICION["precio_entrada"] = precio_actual
             _registrar_posicion(cripto_poseida, precio_maximo)
             print(
                 f"📈 [Trailing Stop] Posición registrada. Precio base: "
@@ -232,15 +257,25 @@ def ciclo_principal():
         precio_limite_venta = ESTADO_POSICION["precio_maximo_alcanzado"] * (
             1 - PORCENTAJE_TRAILING_STOP / 100
         )
+        precio_limite_perdida = ESTADO_POSICION["precio_entrada"] * (
+            1 - STOP_LOSS_ESTIMADO_PORCENTAJE / 100
+        )
         print(
-            f"🛡️ [Trailing Stop] Pico: "
+            f"🛡️ [Protección] Entrada: "
+            f"${ESTADO_POSICION['precio_entrada']:,.2f} | Stop: "
+            f"${precio_limite_perdida:,.2f} | Pico: "
             f"${ESTADO_POSICION['precio_maximo_alcanzado']:,.2f} | "
             f"Límite dinámico: ${precio_limite_venta:,.2f}"
         )
 
-        if precio_actual <= precio_limite_venta or variacion_poseida < 0:
+        if _debe_vender(
+            precio_actual,
+            ESTADO_POSICION["precio_entrada"],
+            ESTADO_POSICION["precio_maximo_alcanzado"],
+            variacion_poseida,
+        ):
             enviar_alerta_telegram(
-                f"🛡️ <b>Protección activada (Trailing Stop / Caída)</b>\n"
+                f"🛡️ <b>Protección activada (Stop / Trailing / Caída)</b>\n"
                 f"• Vendiendo {cripto_poseida.upper()} a MXN.\n"
                 f"• Precio actual: ${precio_actual:,.2f} | "
                 f"Pico: ${ESTADO_POSICION['precio_maximo_alcanzado']:,.2f}"
@@ -269,7 +304,10 @@ def ciclo_principal():
                 f"(requerido: +{UMBRAL_DIFERENCIA_ROTACION:.2f}%)"
             )
 
-            if diferencia_rendimiento >= UMBRAL_DIFERENCIA_ROTACION:
+            if (
+                diferencia_rendimiento >= UMBRAL_DIFERENCIA_ROTACION
+                and _compra_permitida(mercado_lider, mercados)
+            ):
                 enviar_alerta_telegram(
                     f"🔄 <b>Rotación de mercado detectada</b>\n"
                     f"• Vendiendo {cripto_poseida.upper()}.\n"

@@ -7,10 +7,15 @@ from unittest.mock import patch
 from bitso_bot import paper_state
 from bitso_bot.config import (
     MAX_EXPOSICION_PORCENTAJE,
+    PORCENTAJE_TRAILING_STOP,
     RIESGO_MAXIMO_OPERACION_PORCENTAJE,
+    STOP_LOSS_ESTIMADO_PORCENTAJE,
+    UMBRAL_DIFERENCIA_ROTACION,
+    UMBRAL_MINIMO_GANANCIA,
     VOLUMEN_MINIMO_MXN,
 )
 from bitso_bot.strategy import (
+    _debe_vender,
     _mercado_apto_para_compra,
     _monto_compra,
     calcular_monto_compra,
@@ -39,7 +44,7 @@ class RiskControlTests(unittest.TestCase):
             1000
             * RIESGO_MAXIMO_OPERACION_PORCENTAJE
             / 100
-            / (4 / 100)
+            / (STOP_LOSS_ESTIMADO_PORCENTAJE / 100)
         )
         self.assertLessEqual(amount, risk_cap)
 
@@ -47,9 +52,42 @@ class RiskControlTests(unittest.TestCase):
         balances = {"mxn": 1000}
         markets = [{"cripto": "btc", "precio": 2_000_000}]
         with patch("bitso_bot.strategy.MODO_OPERACION", "safe"):
-            self.assertEqual(_monto_compra(1000, balances, markets), 100)
+            self.assertEqual(_monto_compra(1000, balances, markets), 50)
         with patch("bitso_bot.strategy.MODO_OPERACION", "full"):
             self.assertEqual(_monto_compra(1000, balances, markets), 1000)
+
+    def test_strategy_defaults_are_more_conservative(self):
+        self.assertEqual(MAX_EXPOSICION_PORCENTAJE, 5.0)
+        self.assertEqual(RIESGO_MAXIMO_OPERACION_PORCENTAJE, 0.5)
+        self.assertEqual(UMBRAL_MINIMO_GANANCIA, 2.0)
+        self.assertEqual(UMBRAL_DIFERENCIA_ROTACION, 3.5)
+        self.assertEqual(PORCENTAJE_TRAILING_STOP, 5.0)
+
+    def test_exit_rules_trigger_entry_stop_and_trailing_stop(self):
+        self.assertTrue(
+            _debe_vender(
+                95,
+                100,
+                100,
+                1,
+            )
+        )
+        self.assertTrue(
+            _debe_vender(
+                94,
+                100,
+                105,
+                1,
+            )
+        )
+        self.assertFalse(
+            _debe_vender(
+                98,
+                100,
+                100,
+                1,
+            )
+        )
 
     def test_paper_orders_persist_balances_and_charge_fees(self):
         balances = paper_state.obtener_balances_paper(1000)
@@ -116,25 +154,26 @@ class RiskControlTests(unittest.TestCase):
                 "volumen": 10,
             },
         ]
-        with patch(
-            "bitso_bot.strategy.escanear_mercados", return_value=markets
-        ):
+        with patch("bitso_bot.strategy.MODO_OPERACION", "paper"):
             with patch(
-                "bitso_bot.strategy.enviar_alerta_telegram"
+                "bitso_bot.strategy.escanear_mercados", return_value=markets
             ):
                 with patch(
-                    "bitso_bot.strategy.obtener_balances",
-                    side_effect=AssertionError(
-                        "paper must not read live balances"
-                    ),
+                    "bitso_bot.strategy.enviar_alerta_telegram"
                 ):
                     with patch(
-                        "bitso_bot.strategy.ejecutar_orden",
+                        "bitso_bot.strategy.obtener_balances",
                         side_effect=AssertionError(
-                            "paper must not send live orders"
+                            "paper must not read live balances"
                         ),
                     ):
-                        ciclo_principal()
+                        with patch(
+                            "bitso_bot.strategy.ejecutar_orden",
+                            side_effect=AssertionError(
+                                "paper must not send live orders"
+                            ),
+                        ):
+                            ciclo_principal()
 
         balances = paper_state.obtener_balances_paper(0)
         self.assertGreater(balances["btc"], 0)

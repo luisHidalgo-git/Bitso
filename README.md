@@ -162,22 +162,26 @@ Los valores se definen en `bitso_bot/config.py`:
 | Parámetro | Valor | Uso |
 |---|---:|---|
 | `SALDO_MINIMO_REQUERIDO` | `50.0` MXN | Saldo mínimo para una compra. |
-| `UMBRAL_MINIMO_GANANCIA` | `1.0` % | Variación mínima de 24 horas para considerar la compra inicial. |
-| `UMBRAL_DIFERENCIA_ROTACION` | `2.5` puntos porcentuales | Ventaja mínima del nuevo líder para activar una rotación. |
-| `PORCENTAJE_TRAILING_STOP` | `1.5` % | Caída desde el máximo que activa la orden de venta. |
-| `MAX_EXPOSICION_PORCENTAJE` | `10.0` % | Exposición máxima de una compra en modo `safe` y `paper`. |
-| `RIESGO_MAXIMO_OPERACION_PORCENTAJE` | `1.0` % | Riesgo estimado máximo por operación para calcular el tamaño. |
-| `STOP_LOSS_ESTIMADO_PORCENTAJE` | `4.0` % | Supuesto usado en el cálculo del límite de riesgo; no es una orden garantizada. |
+| `UMBRAL_MINIMO_GANANCIA` | `2.0` % | Variación mínima de 24 horas para considerar la compra inicial. |
+| `UMBRAL_DIFERENCIA_ROTACION` | `3.5` puntos porcentuales | Ventaja mínima de un líder apto para activar una rotación. |
+| `PORCENTAJE_TRAILING_STOP` | `5.0` % | Caída desde el máximo que activa la venta al revisar el ciclo. |
+| `MAX_EXPOSICION_PORCENTAJE` | `5.0` % | Exposición máxima de una compra en modo `safe` y `paper`. |
+| `RIESGO_MAXIMO_OPERACION_PORCENTAJE` | `0.5` % | Riesgo estimado máximo por operación para calcular el tamaño. |
+| `STOP_LOSS_ESTIMADO_PORCENTAJE` | `4.0` % | Caída desde la entrada que activa la venta al revisar el ciclo y supuesto para dimensionar el riesgo. |
 | `VOLUMEN_MINIMO_MXN` | `50,000` MXN | Volumen mínimo estimado para comprar en `safe` y `paper`. |
 | `COMISION_ESTIMADA_RATE` | `0.005` | Comisión usada en la simulación (`0.5 %`). |
 | `MONEDAS_PERMITIDAS` | BTC, ETH, XRP y SOL contra MXN | Mercados que se analizan. |
 
 En modo `safe`, el tamaño de compra es `min(saldo disponible, exposición
 máxima, límite de riesgo)`. Con los valores predeterminados, la exposición por
-operación es como máximo el 10 % del valor estimado de la cuenta y el modelo
-estima una caída adversa del 4 % para dimensionar el riesgo. Esto es solo una
-regla de tamaño, no limita con certeza la pérdida real. En modo `full`, se usa
-todo el saldo MXN disponible, como antes.
+operación es como máximo el 5 % del valor estimado de la cuenta. La estrategia
+monitorea un stop de 4 % desde la entrada y un trailing stop de 5 % desde el
+máximo, y exige una señal de entrada de 2 % y una ventaja de 3.5 puntos para
+rotar. Estas reglas se evalúan cada minuto y ejecutan órdenes de mercado: no
+son órdenes stop alojadas en Bitso ni límites garantizados de pérdida. El
+slippage, las comisiones y movimientos rápidos pueden aumentar la pérdida.
+En modo `full`, se conserva el comportamiento anterior y se usa todo el saldo
+MXN disponible.
 
 ## API de Bitso y órdenes reales
 
@@ -197,7 +201,8 @@ se llama a la API privada.
 
 ## Limitaciones
 
-- El precio máximo del trailing stop no se guarda entre ejecuciones.
+- El precio de entrada y el máximo del trailing stop se guardan en `paper` y
+  `safe`; en `full`, el estado solo permanece en memoria.
 - La posición se determina a partir de los balances, no de un registro de
   operaciones del bot.
 - La estrategia no calcula comisiones, spread, slippage ni rendimiento neto.
