@@ -137,7 +137,7 @@ class RiskControlTests(unittest.TestCase):
         self.assertEqual(position, "btc")
         self.assertEqual(amount, 0.00005)
 
-    def test_paper_cycle_does_not_call_live_balance_or_order_api(self):
+    def test_simulation_cycle_does_not_call_live_balance_or_order_api(self):
         markets = [
             {
                 "book": "btc_mxn",
@@ -154,7 +154,7 @@ class RiskControlTests(unittest.TestCase):
                 "volumen": 10,
             },
         ]
-        with patch("bitso_bot.strategy.MODO_OPERACION", "paper"):
+        with patch("bitso_bot.strategy.MODO_OPERACION", "simulation"):
             with patch(
                 "bitso_bot.strategy.escanear_mercados", return_value=markets
             ):
@@ -164,13 +164,13 @@ class RiskControlTests(unittest.TestCase):
                     with patch(
                         "bitso_bot.strategy.obtener_balances",
                         side_effect=AssertionError(
-                            "paper must not read live balances"
+                            "simulation must not read live balances"
                         ),
                     ):
                         with patch(
                             "bitso_bot.strategy.ejecutar_orden",
                             side_effect=AssertionError(
-                                "paper must not send live orders"
+                                "simulation must not send live orders"
                             ),
                         ):
                             ciclo_principal()

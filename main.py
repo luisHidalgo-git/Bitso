@@ -6,7 +6,7 @@ from bitso_bot.strategy import ciclo_principal
 
 
 def main():
-    if MODO_OPERACION == "paper":
+    if MODO_OPERACION == "simulation":
         descripcion_modo = "simulación; no se enviarán órdenes reales"
     elif MODO_OPERACION == "safe":
         descripcion_modo = "operaciones reales con límites de riesgo"

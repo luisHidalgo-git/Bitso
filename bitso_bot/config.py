@@ -11,11 +11,15 @@ API_SECRET = os.getenv("BITSO_API_SECRET")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-MODO_OPERACION = os.getenv("MODO_OPERACION", "paper").strip().lower()
-MODOS_OPERACION_VALIDOS = {"paper", "safe", "full"}
+MODO_OPERACION = os.getenv("MODO_OPERACION", "simulation").strip().lower()
+if MODO_OPERACION == "paper":
+    MODO_OPERACION = "simulation"
+
+MODOS_OPERACION_VALIDOS = {"simulation", "safe", "full"}
 if MODO_OPERACION not in MODOS_OPERACION_VALIDOS:
     raise ValueError(
-        "MODO_OPERACION debe ser uno de estos valores: paper, safe o full."
+        "MODO_OPERACION debe ser uno de estos valores: "
+        "simulation, safe o full."
     )
 
 if MODO_OPERACION in {"safe", "full"} and (not API_KEY or not API_SECRET):

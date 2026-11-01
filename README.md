@@ -4,9 +4,11 @@ Bot de Python que consulta balances y mercados de Bitso, evalúa una estrategia
 para pares contra MXN y reporta las decisiones en la consola y, opcionalmente,
 por Telegram.
 
-El bot tiene tres modos de operación: simulación (`paper`), operaciones reales
-limitadas (`safe`) y el modo anterior de operaciones reales con todo el saldo
-disponible (`full`). Por seguridad, si no se define un modo, se usa `paper`.
+El bot tiene tres modos de operación: simulación (`simulation`), operaciones
+reales limitadas (`safe`) y el modo anterior de operaciones reales con todo el
+saldo disponible (`full`). Por seguridad, si no se define un modo, se usa
+`simulation`.
+El valor anterior `paper` se acepta como alias de `simulation`.
 
 ## Advertencia
 
@@ -16,7 +18,8 @@ puede perder dinero: el límite de tamaño no es una garantía de pérdida máxi
 y las órdenes de mercado están expuestas a volatilidad, comisiones, spread,
 liquidez y slippage. En los modos reales, las reglas de salida venden todo el
 saldo de la posición reconocida; esto también puede incluir criptomonedas
-compradas fuera del bot. Revisa los permisos de la API y comienza en `paper`.
+compradas fuera del bot. Revisa los permisos de la API y comienza en
+`simulation`.
 
 ## Cómo funciona
 
@@ -24,8 +27,8 @@ Al iniciar, el bot carga las variables de entorno y envía un mensaje de inicio.
 Después, `main.py` repite el ciclo de evaluación cada **60 segundos**. Los
 balances y las órdenes se manejan según `MODO_OPERACION`:
 
-- **`paper` (predeterminado):** usa un portafolio de simulación persistido en
-  SQLite; no consulta balances privados ni envía órdenes a Bitso.
+- **`simulation` (predeterminado):** usa un portafolio de simulación persistido
+  en SQLite; no consulta balances privados ni envía órdenes a Bitso.
 - **`safe`:** opera con dinero real, pero limita cada compra inicial o
   reinversión al menor valor entre el saldo MXN disponible, el 10 % del valor
   total estimado de la cuenta y el tamaño máximo calculado con el riesgo
@@ -35,7 +38,7 @@ balances y las órdenes se manejan según `MODO_OPERACION`:
 
 En todos los modos, el bot:
 
-1. Obtiene los balances: virtuales en `paper` y de la cuenta de Bitso en los
+1. Obtiene los balances: virtuales en `simulation` y de la cuenta de Bitso en los
    modos reales.
 2. Consulta los tickers públicos y filtra los pares permitidos contra MXN:
    BTC, ETH, XRP y SOL.
@@ -54,12 +57,12 @@ En todos los modos, el bot:
    las reglas del modo y hay al menos 50 MXN para operar.
 6. Espera un minuto y comienza el siguiente ciclo.
 
-La posición se infiere de los balances. En `safe` y `paper`, la posición
+La posición se infiere de los balances. En `safe` y `simulation`, la posición
 gestionada y el máximo del trailing stop se guardan en SQLite; en `full`, el
 máximo se conserva solo en memoria y se reinicia al cerrar el programa. Los
 umbrales para reconocer balances como posiciones son BTC `0.0001`, ETH
 `0.001`, XRP `1.0` y SOL `0.01`; una posición pequeña comprada y registrada por
-el bot también se reconoce en `safe` y `paper`.
+el bot también se reconoce en `safe` y `simulation`.
 
 ## Estructura del proyecto
 
@@ -93,21 +96,20 @@ python -m pip install -r requirements.txt
 
 ## Configuración
 
-Crea un archivo `.env` en la raíz del proyecto. Empieza con el modo seguro de
+Crea un archivo `.env` en la raíz del proyecto. Empieza con el modo de
 simulación:
 
 ```env
-MODO_OPERACION=paper
+MODO_OPERACION=simulation
 CAPITAL_INICIAL_PAPER=1000
-BITSO_API_KEY=tu_api_key_de_bitso
-BITSO_API_SECRET=tu_api_secret_de_bitso
 ```
 
 `CAPITAL_INICIAL_PAPER` establece el saldo MXN virtual inicial. Para activar
 órdenes reales limitadas, cambia a `MODO_OPERACION=safe`; para recuperar el
 comportamiento de todo el saldo, usa `MODO_OPERACION=full`. Los modos `safe` y
 `full` requieren credenciales de Bitso. Usa una API con los permisos mínimos
-necesarios; las credenciales no son necesarias en `paper`.
+necesarios; las credenciales no son necesarias en `simulation`. `paper` sigue
+aceptándose como alias por compatibilidad.
 
 Para recibir notificaciones por Telegram, agrega también:
 
@@ -118,7 +120,7 @@ TELEGRAM_CHAT_ID=id_del_chat
 
 Telegram es opcional: si no se configuran ambas variables, los mensajes se
 imprimen en la consola. No compartas ni subas `.env` al repositorio.
-El estado SQLite de `paper` y `safe` se guarda en `data/` (o en la ruta
+El estado SQLite de `simulation` y `safe` se guarda en `data/` (o en la ruta
 indicada por `RUTA_ESTADO`). Se conserva mientras el almacenamiento local del
 despliegue sea persistente; en Railway, monta un volumen si necesitas mantener
 ese archivo al reemplazar o recrear el contenedor.
@@ -143,7 +145,7 @@ iniciar el proceso con `python main.py` y reiniciarlo si termina con error.
 1. Sube el proyecto a un repositorio Git y crea un proyecto en Railway desde
    ese repositorio.
 2. En el servicio, abre **Variables** y agrega:
-   - `MODO_OPERACION=paper` para simulación (predeterminado).
+   - `MODO_OPERACION=simulation` para simulación (predeterminado).
    - `MODO_OPERACION=safe` para operaciones reales con límites.
    - `MODO_OPERACION=full` para operaciones reales con todo el saldo.
    - `BITSO_API_KEY` y `BITSO_API_SECRET` solo para los modos reales.
@@ -165,10 +167,10 @@ Los valores se definen en `bitso_bot/config.py`:
 | `UMBRAL_MINIMO_GANANCIA` | `2.0` % | Variación mínima de 24 horas para considerar la compra inicial. |
 | `UMBRAL_DIFERENCIA_ROTACION` | `3.5` puntos porcentuales | Ventaja mínima de un líder apto para activar una rotación. |
 | `PORCENTAJE_TRAILING_STOP` | `5.0` % | Caída desde el máximo que activa la venta al revisar el ciclo. |
-| `MAX_EXPOSICION_PORCENTAJE` | `5.0` % | Exposición máxima de una compra en modo `safe` y `paper`. |
+| `MAX_EXPOSICION_PORCENTAJE` | `5.0` % | Exposición máxima de una compra en modo `safe` y `simulation`. |
 | `RIESGO_MAXIMO_OPERACION_PORCENTAJE` | `0.5` % | Riesgo estimado máximo por operación para calcular el tamaño. |
 | `STOP_LOSS_ESTIMADO_PORCENTAJE` | `4.0` % | Caída desde la entrada que activa la venta al revisar el ciclo y supuesto para dimensionar el riesgo. |
-| `VOLUMEN_MINIMO_MXN` | `50,000` MXN | Volumen mínimo estimado para comprar en `safe` y `paper`. |
+| `VOLUMEN_MINIMO_MXN` | `50,000` MXN | Volumen mínimo estimado para comprar en `safe` y `simulation`. |
 | `COMISION_ESTIMADA_RATE` | `0.005` | Comisión usada en la simulación (`0.5 %`). |
 | `MONEDAS_PERMITIDAS` | BTC, ETH, XRP y SOL contra MXN | Mercados que se analizan. |
 
@@ -196,12 +198,12 @@ En los modos reales, la estrategia llama a `ejecutar_orden(...)` para enviar
 órdenes de mercado a Bitso. Una respuesta exitosa de la API se reporta como
 orden aceptada por Bitso, no como garantía de precio ni de ejecución final. Las
 órdenes de mercado pueden ejecutarse a un precio distinto del observado
-durante el análisis. En `paper`, las operaciones se registran localmente y no
-se llama a la API privada.
+durante el análisis. En `simulation`, las operaciones se registran localmente y
+no se llama a la API privada.
 
 ## Limitaciones
 
-- El precio de entrada y el máximo del trailing stop se guardan en `paper` y
+- El precio de entrada y el máximo del trailing stop se guardan en `simulation` y
   `safe`; en `full`, el estado solo permanece en memoria.
 - La posición se determina a partir de los balances, no de un registro de
   operaciones del bot.

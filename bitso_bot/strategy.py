@@ -24,11 +24,11 @@ UMBRALES_POSICION = {"btc": 0.0001, "eth": 0.001, "xrp": 1.0, "sol": 0.01}
 
 
 def _persistir_estado_posicion():
-    return MODO_OPERACION in {"paper", "safe"}
+    return MODO_OPERACION in {"simulation", "safe"}
 
 
 def _clave_estado_posicion():
-    return "position" if MODO_OPERACION == "paper" else "safe_position"
+    return "position" if MODO_OPERACION == "simulation" else "safe_position"
 
 
 def detectar_cripto_poseida(balances, estado_registrado=None):
@@ -82,7 +82,7 @@ def _mercado_apto_para_compra(mercado, mercados):
 
 
 def _obtener_balances():
-    if MODO_OPERACION == "paper":
+    if MODO_OPERACION == "simulation":
         return paper_state.obtener_balances_paper(CAPITAL_INICIAL_PAPER)
     return obtener_balances()
 
@@ -109,7 +109,7 @@ def _compra_permitida(mercado, mercados):
 
 
 def _ejecutar_orden(book, side, tipo_monto, valor, precio):
-    if MODO_OPERACION != "paper":
+    if MODO_OPERACION != "simulation":
         return ejecutar_orden(
             book,
             side=side,
