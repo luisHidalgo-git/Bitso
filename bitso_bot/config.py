@@ -8,9 +8,6 @@ load_dotenv()
 API_KEY = os.getenv("BITSO_API_KEY")
 API_SECRET = os.getenv("BITSO_API_SECRET")
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
 MODO_OPERACION = os.getenv("MODO_OPERACION", "simulation").strip().lower()
 if MODO_OPERACION == "paper":
     MODO_OPERACION = "simulation"

@@ -6,7 +6,7 @@ import time
 import requests
 
 from bitso_bot.config import API_KEY, API_SECRET, BASE_URL, MONEDAS_PERMITIDAS
-from bitso_bot.notifications import enviar_alerta_telegram
+from bitso_bot.notifications import imprimir_notificacion
 
 
 def crear_firma_bitso(http_method, request_path, payload=""):
@@ -91,17 +91,17 @@ def ejecutar_orden(book, side, tipo_monto, valor):
         response = requests.post(BASE_URL + path, headers=headers, data=payload_str)
         resultado = response.json()
         if resultado.get("success"):
-            enviar_alerta_telegram(
-                f"✅ <b>Orden aceptada por Bitso</b>\n"
-                f"• Acción: {side.upper()}\n• Mercado: {book.upper()}"
+            imprimir_notificacion(
+                f"✅ Orden aceptada por Bitso\n"
+                f"   -> Acción: {side.upper()}\n   -> Mercado: {book.upper()}"
             )
             return True
-        enviar_alerta_telegram(
-            f"⚠️ <b>Bitso rechazó la orden</b>\n"
-            f"• Mercado: {book.upper()}\n• Motivo: {resultado.get('error')}"
+        imprimir_notificacion(
+            f"⚠️ Bitso rechazó la orden\n"
+            f"   -> Mercado: {book.upper()}\n   -> Motivo: {resultado.get('error')}"
         )
     except Exception as e:
-        enviar_alerta_telegram(
-            f"❌ <b>Error crítico al enviar orden</b> en {book.upper()}: {e}"
+        imprimir_notificacion(
+            f"❌ Error crítico al enviar orden en {book.upper()}: {e}"
         )
     return False

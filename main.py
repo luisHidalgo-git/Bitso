@@ -1,7 +1,7 @@
 import time
 
 from bitso_bot.config import MODO_OPERACION
-from bitso_bot.notifications import enviar_alerta_telegram
+from bitso_bot.notifications import imprimir_notificacion
 from bitso_bot.strategy import ciclo_principal
 
 
@@ -14,9 +14,9 @@ def main():
         descripcion_modo = "operaciones reales usando el saldo disponible"
 
     print(f"Iniciando bot en modo {MODO_OPERACION}: {descripcion_modo}.")
-    enviar_alerta_telegram(
-        f"🤖 <b>Bot de Bitso iniciado en modo {MODO_OPERACION.upper()}</b>\n"
-        f"• {descripcion_modo.capitalize()}."
+    imprimir_notificacion(
+        f"🤖 Bot de Bitso iniciado en modo {MODO_OPERACION.upper()}\n"
+        f"   -> {descripcion_modo.capitalize()}."
     )
     while True:
         ciclo_principal()

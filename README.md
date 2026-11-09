@@ -1,8 +1,7 @@
 # Bot de trading automático para Bitso
 
 Bot de Python que consulta balances y mercados de Bitso, evalúa una estrategia
-para pares contra MXN y reporta las decisiones en la consola y, opcionalmente,
-por Telegram.
+para pares contra MXN y reporta las decisiones en la consola.
 
 El bot tiene tres modos de operación: simulación (`simulation`), operaciones
 reales limitadas (`safe`) y el modo anterior de operaciones reales con todo el
@@ -73,7 +72,7 @@ el bot también se reconoce en `safe` y `simulation`.
 └── bitso_bot/
     ├── __init__.py
     ├── config.py           # Variables de entorno y parámetros
-    ├── notifications.py    # Salida en consola y alertas de Telegram
+    ├── notifications.py    # Salida de notificaciones en consola
     ├── bitso_api.py        # Firma, consultas y envío de órdenes a Bitso
     └── strategy.py         # Evaluación de balances y estrategia
 ```
@@ -111,15 +110,8 @@ comportamiento de todo el saldo, usa `MODO_OPERACION=full`. Los modos `safe` y
 necesarios; las credenciales no son necesarias en `simulation`. `paper` sigue
 aceptándose como alias por compatibilidad.
 
-Para recibir notificaciones por Telegram, agrega también:
-
-```env
-TELEGRAM_BOT_TOKEN=token_de_tu_bot
-TELEGRAM_CHAT_ID=id_del_chat
-```
-
-Telegram es opcional: si no se configuran ambas variables, los mensajes se
-imprimen en la consola. No compartas ni subas `.env` al repositorio.
+Las notificaciones se imprimen en la consola. No compartas ni subas `.env` al
+repositorio.
 El estado SQLite de `simulation` y `safe` se guarda en `data/` (o en la ruta
 indicada por `RUTA_ESTADO`). Se conserva mientras el almacenamiento local del
 despliegue sea persistente; en Railway, monta un volumen si necesitas mantener
@@ -150,7 +142,6 @@ iniciar el proceso con `python main.py` y reiniciarlo si termina con error.
    - `MODO_OPERACION=full` para operaciones reales con todo el saldo.
    - `BITSO_API_KEY` y `BITSO_API_SECRET` solo para los modos reales.
    - Opcionalmente `CAPITAL_INICIAL_PAPER` para el saldo virtual inicial.
-   - Opcionalmente, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`
 3. Despliega el servicio y revisa **Deployments > View Logs** para confirmar
    que el bot inició correctamente.
 

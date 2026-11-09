@@ -12,7 +12,7 @@ from bitso_bot.config import (
     UMBRAL_MINIMO_GANANCIA,
     VOLUMEN_MINIMO_MXN,
 )
-from bitso_bot.notifications import enviar_alerta_telegram
+from bitso_bot.notifications import imprimir_notificacion
 
 ESTADO_POSICION = {
     "cripto_actual": None,
@@ -125,9 +125,9 @@ def _ejecutar_orden(book, side, tipo_monto, valor, precio):
         precio,
     )
     if aceptada:
-        enviar_alerta_telegram(
-            f"🧪 <b>Orden simulada</b>\n"
-            f"• Acción: {side.upper()}\n• Mercado: {book.upper()}"
+        imprimir_notificacion(
+            f"🧪 Orden simulada\n"
+            f"   -> Acción: {side.upper()}\n   -> Mercado: {book.upper()}"
         )
     else:
         print("⚠️ Orden simulada omitida: saldo insuficiente.")
@@ -274,10 +274,10 @@ def ciclo_principal():
             ESTADO_POSICION["precio_maximo_alcanzado"],
             variacion_poseida,
         ):
-            enviar_alerta_telegram(
-                f"🛡️ <b>Protección activada (Stop / Trailing / Caída)</b>\n"
-                f"• Vendiendo {cripto_poseida.upper()} a MXN.\n"
-                f"• Precio actual: ${precio_actual:,.2f} | "
+            imprimir_notificacion(
+                f"🛡️ Protección activada (Stop / Trailing / Caída)\n"
+                f"   -> Vendiendo {cripto_poseida.upper()} a MXN.\n"
+                f"   -> Precio actual: ${precio_actual:,.2f} | "
                 f"Pico: ${ESTADO_POSICION['precio_maximo_alcanzado']:,.2f}"
             )
             if _ejecutar_orden(
@@ -308,10 +308,10 @@ def ciclo_principal():
                 diferencia_rendimiento >= UMBRAL_DIFERENCIA_ROTACION
                 and _compra_permitida(mercado_lider, mercados)
             ):
-                enviar_alerta_telegram(
-                    f"🔄 <b>Rotación de mercado detectada</b>\n"
-                    f"• Vendiendo {cripto_poseida.upper()}.\n"
-                    f"• Comprando líder: {mercado_lider['book'].upper()}."
+                imprimir_notificacion(
+                    f"🔄 Rotación de mercado detectada\n"
+                    f"   -> Vendiendo {cripto_poseida.upper()}.\n"
+                    f"   -> Comprando líder: {mercado_lider['book'].upper()}."
                 )
                 if not _ejecutar_orden(
                     book_poseido,
@@ -364,11 +364,11 @@ def ciclo_principal():
 
         monto_a_gastar = _monto_compra(mxn_disponible, balances, mercados)
         if monto_a_gastar >= SALDO_MINIMO_REQUERIDO:
-            enviar_alerta_telegram(
-                f"🚀 <b>Nueva compra ({MODO_OPERACION.upper()})</b>\n"
-                f"• Activo: {mercado_lider['book'].upper()}\n"
-                f"• Monto: ${monto_a_gastar:,.2f} MXN\n"
-                f"• Variación 24h: {mercado_lider['variacion']:+.2f}%"
+            imprimir_notificacion(
+                f"🚀 Nueva compra ({MODO_OPERACION.upper()})\n"
+                f"   -> Activo: {mercado_lider['book'].upper()}\n"
+                f"   -> Monto: ${monto_a_gastar:,.2f} MXN\n"
+                f"   -> Variación 24h: {mercado_lider['variacion']:+.2f}%"
             )
             if _ejecutar_orden(
                 mercado_lider["book"],

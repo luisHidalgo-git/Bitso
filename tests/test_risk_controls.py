@@ -159,7 +159,7 @@ class RiskControlTests(unittest.TestCase):
                 "bitso_bot.strategy.escanear_mercados", return_value=markets
             ):
                 with patch(
-                    "bitso_bot.strategy.enviar_alerta_telegram"
+                    "bitso_bot.strategy.imprimir_notificacion"
                 ):
                     with patch(
                         "bitso_bot.strategy.obtener_balances",
